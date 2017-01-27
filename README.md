@@ -10,7 +10,7 @@ Then in your browser go to 0.0.0.0:8000 to see it in action.
 
 ### Controls:
 Key | Action
---- | ---
+:---: | ---
 [ | left rotor
 ] | right rotor
 Numpad + | increase engine power
