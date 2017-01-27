@@ -1,12 +1,8 @@
-var container;
+var camera, scene, renderer, drone, rotors;
 
-var camera, scene, renderer, objects;
-var particleLight;
-var drone, rotors;
-
-var loader = new THREE.TGALoader();
-var texture = loader.load( '../models/Drone/Drone_D.tga');
-var material = new THREE.MeshPhongMaterial( {
+let loader = new THREE.TGALoader();
+let texture = loader.load( '../models/Drone/Drone_D.tga');
+let material = new THREE.MeshPhongMaterial( {
     color: 0xffffff,
     map: texture,
     side: THREE.DoubleSide,
@@ -51,14 +47,14 @@ loader.load( '../models/Drone/Body.obj', function ( body ) {
         scene.add( engineR );
 
         rotors = new Rotors(engineL, engineR);
-
+        handleInput();
         animate();
     });
 });
 
 function init() {
 
-    container = document.createElement( 'div' );
+    let container = document.createElement( 'div' );
     document.body.appendChild( container );
 
     camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 1, 2000 );
@@ -69,12 +65,12 @@ function init() {
 
     // Grid
 
-    var size = 14, step = 1;
+    let size = 14, step = 1;
 
-    var geometry = new THREE.Geometry();
-    var material = new THREE.LineBasicMaterial( { color: 0x303030 } );
+    let geometry = new THREE.Geometry();
+    let material = new THREE.LineBasicMaterial( { color: 0x303030 } );
 
-    for ( var i = - size; i <= size; i += step ) {
+    for ( let i = - size; i <= size; i += step ) {
 
         geometry.vertices.push( new THREE.Vector3( - size, - 0.04, i ) );
         geometry.vertices.push( new THREE.Vector3(   size, - 0.04, i ) );
@@ -84,17 +80,17 @@ function init() {
 
     }
 
-    var line = new THREE.LineSegments( geometry, material );
+    let line = new THREE.LineSegments( geometry, material );
     scene.add( line );
 
-    particleLight = new THREE.Mesh( new THREE.SphereGeometry( 16, 8, 8 ), new THREE.MeshBasicMaterial( { color: 0xffffff } ) );
+    let particleLight = new THREE.Mesh( new THREE.SphereGeometry( 16, 8, 8 ), new THREE.MeshBasicMaterial( { color: 0xffffff } ) );
     scene.add( particleLight );
 
     // Lights
 
     scene.add( new THREE.AmbientLight( 0xaaaaaa ) );
 
-    var directionalLight = new THREE.DirectionalLight(/*Math.random() * 0xffffff*/0xeeeeee );
+    let directionalLight = new THREE.DirectionalLight(/*Math.random() * 0xffffff*/0xeeeeee );
     directionalLight.position.x = 0;
     directionalLight.position.y = 1;
     directionalLight.position.z = 10;
@@ -119,47 +115,62 @@ function onWindowResize() {
 
 function animate() {
     requestAnimationFrame( animate );
-
     render();
 }
 
-var clock = new THREE.Clock();
-
 function render() {
-
-    var timer = Date.now() * 0.0005;
+    let timer = Date.now() * 0.0005;
 
 //    camera.position.x = Math.cos(timer) * 4;
 //    camera.position.y = 4;
 //    camera.position.z = Math.sin(timer) * 2;
 
     rotors.updateRotation(timer);
+    rotors.updatePitch();
     renderer.render( scene, camera );
 }
 
-function handleInput(event) {
-    switch (event.keyCode) {
-        case 107: // NumPad +
-            rotors.accelerate(rotors.pick().LEFT);
-            rotors.accelerate(rotors.pick().RIGHT);
-            break;
-        case 109: // NumPad -
-            rotors.decelerate(rotors.pick().LEFT);
-            rotors.decelerate(rotors.pick().RIGHT);
-            break;
-        case 106: // NumPad *
-            rotors.toggleBurner();
-            break;
-        case 219: // [
-            rotors.toggleRotorState(rotors.pick().LEFT);
-            break;
-        case 221: // ]
-            rotors.toggleRotorState(rotors.pick().RIGHT);
-            break;
-        default:
-            console.log(event.keyCode);
+let keysState = {};
+let prevState = {};
+let handlers = {
+    "ArrowLeft":      () => { rotors.steer(rotors.direct.LEFT);     },
+    "ArrowRight":     () => { rotors.steer(rotors.direct.RIGHT);    },
+    "ArrowUp":        () => { rotors.steer(rotors.direct.FORWARD);  },
+    "ArrowDown":      () => { rotors.steer(rotors.direct.BACKWARD); },
+    "NumpadMultiply": (state) => { if (toggleKey(state, "burner"))     rotors.toggleBurner();                      },
+    "BracketLeft":    (state) => { if (toggleKey(state, "leftRotor"))  rotors.toggleRotorState(rotors.pick.LEFT);  },
+    "BracketRight":   (state) => { if (toggleKey(state, "rightRotor")) rotors.toggleRotorState(rotors.pick.RIGHT); },
+    "NumpadAdd": () => {
+        rotors.accelerate(rotors.pick.LEFT);
+        rotors.accelerate(rotors.pick.RIGHT);
+    },
+    "NumpadSubtract": () => {
+        rotors.decelerate(rotors.pick.LEFT);
+        rotors.decelerate(rotors.pick.RIGHT);
+    },
+};
+
+function toggleKey(state, name) {
+    let change = (state !== prevState[name])
+    if (change) {
+        prevState[name] = !prevState[name];
     }
+    return (state && change);
+}
+
+function handleInput() {
+    let toggleKeys = ["NumpadMultiply", "BracketLeft", "BracketRight"];
+    for (let k of Object.keys(keysState)) {
+        if (handlers[k] && (keysState[k] || toggleKeys.includes(k))){
+            handlers[k](keysState[k]);
+        }
+    }
+    if (!keysState["ArrowUp"] && !keysState["ArrowDown"] && !keysState["ArrowLeft"] && !keysState["ArrowRight"]) {
+        rotors.steer();
+    }
+    setTimeout(handleInput, 50);
 }
 
 // attach event handler
-document.onkeydown = handleInput;
+document.onkeydown = function(event) { keysState[event.code] = true;  };
+document.onkeyup   = function(event) { keysState[event.code] = false; };
