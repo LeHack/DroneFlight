@@ -1,10 +1,15 @@
+'use strict';
+
 class Rotors {
-    constructor(leftRotorModel, rightRotorModel){
+    constructor(drone, leftRotorModel, rightRotorModel){
+        this.drone      = drone;
         this.leftRotor  = leftRotorModel;
         this.rightRotor = rightRotorModel;
 
         this.maxPower = 60;
         this.maxPitch = 9;
+        this.maxHeight = 8;
+        this.maxVertVelocity = 4;
         this.pick   = {LEFT: 0, RIGHT: 1};
         this.direct = {LEFT: 0, RIGHT: 1, FORWARD: 2, BACKWARD: 3};
 
@@ -24,6 +29,113 @@ class Rotors {
 
         this.leftRotorPitch = 0;
         this.rightRotorPitch = 0;
+    }
+
+    updateVelocity() {
+        let leftPitch  = this._getPitchCtrl(this.pick.LEFT),
+            rightPitch = this._getPitchCtrl(this.pick.RIGHT),
+            leftRotorSpeed = this._getSpeed(this.pick.LEFT),
+            rightRotorSpeed = this._getSpeed(this.pick.RIGHT),
+            leftRotorPwr = this._getPower(this.pick.LEFT),
+            rightRotorPwr = this._getPower(this.pick.RIGHT),
+            linearVelocity = this.drone.getLinearVelocity(),
+            angularVelocity = this.drone.getAngularVelocity();
+
+        // get direction
+        var matrix = new THREE.Matrix4();
+        matrix.extractRotation( this.drone.matrix );
+        var direction = new THREE.Vector3( 0, 0, 1 );
+        direction.applyMatrix4(matrix);
+
+
+        // Horizontal speed
+        let planeIncrement = (leftPitch * leftRotorSpeed + rightPitch * rightRotorSpeed) * .001;
+        if (planeIncrement !== 0) {
+            linearVelocity.x += direction.x * planeIncrement;
+            linearVelocity.z += direction.z * planeIncrement;
+        }
+        else {
+            linearVelocity.x += -linearVelocity.x * .1;
+            linearVelocity.z += -linearVelocity.z * .1;
+        }
+        let absVelX = Math.abs(linearVelocity.x),
+            absVelZ = Math.abs(linearVelocity.z);
+        // cap horizontal speed
+        if (absVelX < 0.1)       { linearVelocity.x = 0  * (linearVelocity.x > 0 ? 1 : -1); }
+        else if (absVelX > 50) { linearVelocity.x = 50 * (linearVelocity.x > 0 ? 1 : -1); }
+        if (absVelZ < 0.1)       { linearVelocity.z = 0  * (linearVelocity.z > 0 ? 1 : -1); }
+        else if (absVelZ > 50) { linearVelocity.z = 50 * (linearVelocity.z > 0 ? 1 : -1); }
+
+
+        // Vertical speed
+        let yStep = 0.01;
+        if (linearVelocity.y > 0) {
+            if (linearVelocity.y > this.maxVertVelocity - 1) {
+                yStep = (this.maxVertVelocity - linearVelocity.y) * 0.01;
+                if (linearVelocity.y > this.maxVertVelocity) {
+                    yStep = 0;
+                }
+            }
+        }
+        let yIncrement = (this._vertPitchIncr(leftPitch) * leftRotorSpeed + this._vertPitchIncr(rightPitch) * rightRotorSpeed);
+        if (leftRotorPwr > 0 || rightRotorPwr > 0) {
+            linearVelocity.y += yStep * yIncrement;
+            // cap vertical speed
+            if (linearVelocity.y > 0 && this.drone.position.y > this.maxHeight - 3) {
+                linearVelocity.y = linearVelocity.y * (this.maxHeight - this.drone.position.y)/3;
+            }
+        }
+
+        // Horizontal turn
+        let angularIncrement = (leftPitch * leftRotorSpeed - rightPitch * rightRotorSpeed) * .0001;
+        if (angularIncrement !== 0) {
+            angularVelocity.y += angularIncrement;
+        }
+        else {
+            angularVelocity.y += -angularVelocity.y * 0.1;
+        }
+
+
+        // Vertical pitch
+        let xTilt = Math.abs(this.drone.rotation.x);
+        if (linearVelocity.z !== 0) {
+            let xRotIncr = linearVelocity.z * .1; // 0-5
+            this.drone.rotation.x = xRotIncr * 0.05;
+            this.drone.__dirtyRotation = true;
+        }
+        else if (xTilt > 0) {
+            if (Math.abs(this.drone.rotation.x) < 0.01) {
+                this.drone.rotation.x = 0;
+            }
+            else {
+                this.drone.rotation.x -= xTilt * .1;
+            }
+            this.drone.__dirtyRotation = true;
+        }
+
+        let zTilt = Math.abs(this.drone.rotation.z);
+        if (linearVelocity.x !== 0) {
+            let zRotIncr = linearVelocity.x * .1; // 0-5
+            this.drone.rotation.z = zRotIncr * 0.05;
+            this.drone.__dirtyRotation = true;
+        }
+        else if (zTilt > 0) {
+            if (Math.abs(this.drone.rotation.z) < 0.01) {
+                this.drone.rotation.Z = 0;
+            }
+            else {
+                this.drone.rotation.z -= zTilt * .1;
+            }
+            this.drone.__dirtyRotation = true;
+        }
+
+        // update
+        this.drone.setLinearVelocity(linearVelocity);
+        this.drone.setAngularVelocity(angularVelocity);
+    }
+
+    _vertPitchIncr(pitch) {
+        return (1 - Math.abs(pitch)/(25 * this.maxPitch));
     }
 
     updateRotation() {
@@ -57,14 +169,14 @@ class Rotors {
     accelerate(select) {
         let power =  this._getPower(select);
         if (power < this.maxPower) {
-             this._setPower(select, power + 1);
+             this._setPower(select, power + 2);
         }
     }
 
     decelerate(select){
         let power =  this._getPower(select);
-        if (power > 1) {
-             this._setPower(select, power - 1);
+        if (power > 2) {
+             this._setPower(select, power - 2);
         }
     }
 

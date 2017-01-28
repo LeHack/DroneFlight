@@ -1,10 +1,15 @@
-var camera, scene, renderer, drone, rotors;
+'use strict';
+
+Physijs.scripts.worker = './vendor/physijs_worker.js';
+Physijs.scripts.ammo = './ammo.js';
+
+var camera, scene, renderer, controls, drone, rotors;
 
 let loader = new THREE.TGALoader();
-let texture = loader.load( '../models/Drone/Drone_D.tga');
-let material = new THREE.MeshPhongMaterial( {
+let droneTexture = loader.load( '../models/Drone/Drone_D.tga');
+let droneMaterial = new THREE.MeshPhongMaterial( {
     color: 0xffffff,
-    map: texture,
+    map: droneTexture,
     side: THREE.DoubleSide,
 });
 
@@ -13,42 +18,58 @@ loader = new THREE.OBJLoader();
 loader.load( '../models/Drone/Body.obj', function ( body ) {
     body.traverse( function ( child ) {
         if ( child instanceof THREE.Mesh ) {
-            child.material = material;
+            child.material = droneMaterial;
         }
     });
-    
-    drone = body;
+
+    drone = new Physijs.BoxMesh(
+        new THREE.BoxGeometry( 5, 0.5, 2 ),
+        new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.0 })
+        // Uncomment the next line to see the wireframe of the container shape
+        // new THREE.MeshBasicMaterial({ wireframe: true, opacity: 0.5 })
+    );
+    body.position.y = -.2;
+    body.castShadow = true;
+    body.receiveShadow = true;
+
+    drone.add(body);
     drone.position.x = 0;
-    drone.position.y = 1;
     drone.position.z = 0;
 
     loader.load( '../models/Drone/Engine.obj', function ( engine ) {
         engine.traverse( function ( child ) {
             if ( child instanceof THREE.Mesh ) {
-                child.material = material;
+                child.material = droneMaterial;
             }
         });
-        engineL = engine.clone();
-        engineR = engine.clone();
+        engine.castShadow = true;
+        engine.receiveShadow = true;
+
+        let engineL = engine.clone();
+        let engineR = engine.clone();
 
         engineL.position.x = .73;
-        engineL.position.y = 1.34;
+        engineL.position.y = .14;
         engineL.position.z = -.1;
         engineR.applyMatrix(new THREE.Matrix4().makeScale(-1, 1, 1));
 
         engineR.position.x = -.73;
-        engineR.position.y = 1.34;
+        engineR.position.y = .14;
         engineR.position.z = -.1;
-        
-        init();
-        
-        scene.add( drone );
-        scene.add( engineL );
-        scene.add( engineR );
 
-        rotors = new Rotors(engineL, engineR);
+        drone.add(engineL);
+        drone.add(engineR);
+        drone.position.y = .25;
+
+        init();
+
+        scene.add( drone );
+
+        rotors = new Rotors(drone, engineL, engineR);
         handleInput();
         animate();
+
+        console.log(drone);
     });
 });
 
@@ -57,14 +78,29 @@ function init() {
     let container = document.createElement( 'div' );
     document.body.appendChild( container );
 
-    camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 1, 2000 );
-    camera.position.set( 3, 3, 3 );
-    camera.lookAt(drone.position);
+    camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 1, 4000 );
+    camera.position.set( 0, 4, -5 );
+    camera.lookAt(getCameraPoint(drone));
 
-    scene = new THREE.Scene();
+    controls = new THREE.TrackballControls( camera );
+
+    controls.rotateSpeed = 1.0;
+    controls.zoomSpeed = 1.2;
+    controls.minDistance = 8;
+    controls.maxDistance = 15;
+
+    //controls.noRotate = true;
+    controls.noZoom = false;
+    controls.staticMoving = true;
+    controls.dynamicDampingFactor = 0.3;
+
+    controls.keys = [ 65, 83, 68 ];
+    controls.addEventListener( 'change', render );
+
+    scene = new Physijs.Scene();
+    scene.setGravity(new THREE.Vector3( 0, -30, 0 ));
 
     // Grid
-
     let size = 14, step = 1;
 
     let geometry = new THREE.Geometry();
@@ -83,19 +119,29 @@ function init() {
     let line = new THREE.LineSegments( geometry, material );
     scene.add( line );
 
-    let particleLight = new THREE.Mesh( new THREE.SphereGeometry( 16, 8, 8 ), new THREE.MeshBasicMaterial( { color: 0xffffff } ) );
-    scene.add( particleLight );
+    let ground = new Physijs.PlaneMesh(
+        new THREE.PlaneGeometry( 300, 300, 100, 100 ),
+        new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.0 }),
+        0
+    );
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    ground.position.y = 0.05;
+    scene.add( ground );
+
+//    let particleLight = new THREE.Mesh( new THREE.SphereGeometry( 16, 8, 8 ), new THREE.MeshBasicMaterial( { color: 0xffffff } ) );
+//    scene.add( particleLight );
 
     // Lights
 
     scene.add( new THREE.AmbientLight( 0xaaaaaa ) );
 
-    let directionalLight = new THREE.DirectionalLight(/*Math.random() * 0xffffff*/0xeeeeee );
-    directionalLight.position.x = 0;
-    directionalLight.position.y = 1;
-    directionalLight.position.z = 10;
-    directionalLight.position.normalize();
-    scene.add( directionalLight );
+//    let directionalLight = new THREE.DirectionalLight(/*Math.random() * 0xffffff*/0xeeeeee );
+//    directionalLight.position.x = 0;
+//    directionalLight.position.y = 1;
+//    directionalLight.position.z = 10;
+//    directionalLight.position.normalize();
+//    scene.add( directionalLight );
 
     renderer = new THREE.WebGLRenderer();
     renderer.setPixelRatio( window.devicePixelRatio );
@@ -106,37 +152,49 @@ function init() {
 }
 
 function onWindowResize() {
-
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
 
+    controls.handleResize();
     renderer.setSize( window.innerWidth, window.innerHeight );
 }
 
 function animate() {
     requestAnimationFrame( animate );
+    controls.update();
+    let dronePoint = getCameraPoint(drone);
+    camera.position.x = dronePoint.x;
+    camera.position.y = dronePoint.y + 3;
+    camera.position.z = dronePoint.z - 10;
+    camera.lookAt(dronePoint);
     render();
 }
 
 function render() {
-    let timer = Date.now() * 0.0005;
-
-//    camera.position.x = Math.cos(timer) * 4;
-//    camera.position.y = 4;
-//    camera.position.z = Math.sin(timer) * 2;
-
-    rotors.updateRotation(timer);
+    rotors.updateRotation();
     rotors.updatePitch();
+    rotors.updateVelocity();
+    scene.simulate();
     renderer.render( scene, camera );
 }
+
+function getCameraPoint(drone) {
+    return new THREE.Vector3( drone.position.x, drone.position.y + 1, drone.position.z + 3 );
+}
+
+
 
 let keysState = {};
 let prevState = {};
 let handlers = {
-    "ArrowLeft":      () => { rotors.steer(rotors.direct.LEFT);     },
-    "ArrowRight":     () => { rotors.steer(rotors.direct.RIGHT);    },
     "ArrowUp":        () => { rotors.steer(rotors.direct.FORWARD);  },
     "ArrowDown":      () => { rotors.steer(rotors.direct.BACKWARD); },
+    "ArrowLeft":      () => { rotors.steer(rotors.direct.LEFT);     },
+    "ArrowRight":     () => { rotors.steer(rotors.direct.RIGHT);    },
+    "KeyW":           () => { rotors.steer(rotors.direct.FORWARD);  },
+    "KeyS":           () => { rotors.steer(rotors.direct.BACKWARD); },
+    "KeyA":           () => { rotors.steer(rotors.direct.LEFT);     },
+    "KeyD":           () => { rotors.steer(rotors.direct.RIGHT);    },
     "NumpadMultiply": (state) => { if (toggleKey(state, "burner"))     rotors.toggleBurner();                      },
     "BracketLeft":    (state) => { if (toggleKey(state, "leftRotor"))  rotors.toggleRotorState(rotors.pick.LEFT);  },
     "BracketRight":   (state) => { if (toggleKey(state, "rightRotor")) rotors.toggleRotorState(rotors.pick.RIGHT); },
@@ -165,7 +223,15 @@ function handleInput() {
             handlers[k](keysState[k]);
         }
     }
-    if (!keysState["ArrowUp"] && !keysState["ArrowDown"] && !keysState["ArrowLeft"] && !keysState["ArrowRight"]) {
+    let noCtrlKeyPressed = true;
+    let controlKeys = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "KeyW", "KeyS", "KeyA", "KeyD"];
+    for (let k of controlKeys) {
+        if (keysState[k]) {
+            noCtrlKeyPressed = false;
+            break;
+        }
+    }
+    if (noCtrlKeyPressed) {
         rotors.steer();
     }
     setTimeout(handleInput, 50);
