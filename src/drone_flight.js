@@ -3,7 +3,7 @@
 Physijs.scripts.worker = './vendor/physijs_worker.js';
 Physijs.scripts.ammo = './ammo.js';
 
-var camera, cameraBox, scene, sky, renderer, controls, drone, rotors;
+var camera, leds = [], scene, sky, renderer, controls, drone, rotors;
 
 let loader = new THREE.TGALoader();
 let droneTexture = loader.load( '../models/Drone/Drone_D.tga');
@@ -78,13 +78,6 @@ loader.load( '../models/Drone/Body.obj', function ( body ) {
 
         scene.add( drone );
 
-        cameraBox = new Physijs.BoxMesh(
-            new THREE.BoxGeometry( .1, .1 ,.1 ),
-            new THREE.MeshBasicMaterial({ wireframe: true, opacity: 0.5 })
-//            new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.0 })
-        );
-//        attachCamera( drone, cameraBox );
-
         rotors = new Rotors(drone, engineL, engineR);
         handleInput();
 
@@ -98,64 +91,36 @@ function init() {
     document.body.appendChild( container );
 
     camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 1, 2000000 );
-    camera.position.set( 0, 4, -5 );
     camera.lookAt(getCameraPoint(drone));
 
-    controls = new THREE.TrackballControls( camera );
-
-    controls.rotateSpeed = 1.0;
-    controls.zoomSpeed = 1.2;
-    controls.minDistance = 8;
-    controls.maxDistance = 15;
-
-    //controls.noRotate = true;
-    controls.noZoom = false;
-    controls.staticMoving = true;
-    controls.dynamicDampingFactor = 0.3;
-
-    controls.keys = [ 65, 83, 68 ];
-    controls.addEventListener( 'change', render );
+//    controls = new THREE.TrackballControls( camera );
+//
+//    controls.rotateSpeed = 1.0;
+//    controls.zoomSpeed = 1.2;
+//    controls.minDistance = 8;
+//    controls.maxDistance = 15;
+//
+//    //controls.noRotate = true;
+//    controls.noZoom = true;
+//    controls.staticMoving = true;
+//    controls.dynamicDampingFactor = 0.3;
+//
+//    controls.keys = [ 65, 83, 68 ];
+//    controls.addEventListener( 'change', render );
 
     scene = new Physijs.Scene();
+    // scene.fog = new THREE.Fog( 0xcccccc, 35, 200 );
+
     scene.setGravity(new THREE.Vector3( 0, -30, 0 ));
-
-    // Grid
-//    let size = 14, step = 1;
-//
-//    let geometry = new THREE.Geometry();
-//    let material = new THREE.LineBasicMaterial( { color: 0x303030 } );
-//
-//    for ( let i = - size; i <= size; i += step ) {
-//
-//        geometry.vertices.push( new THREE.Vector3( - size, - 0.04, i ) );
-//        geometry.vertices.push( new THREE.Vector3(   size, - 0.04, i ) );
-//
-//        geometry.vertices.push( new THREE.Vector3( i, - 0.04, - size ) );
-//        geometry.vertices.push( new THREE.Vector3( i, - 0.04,   size ) );
-//
-//    }
-//
-//    let line = new THREE.LineSegments( geometry, material );
-//    scene.add( line );
-
-    let base = new Physijs.PlaneMesh(
-        new THREE.PlaneGeometry( 500, 500, 200, 200 ),
-        new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.0 }),
-        0
-    );
-    base.rotation.x = -Math.PI / 2;
-    base.receiveShadow = true;
-    base.position.y = 0;
-    scene.add( base );
 
     // Loader
     let texLoader = new THREE.TextureLoader();
-    
+
     // Materials
     let ground_material = Physijs.createMaterial(
         new THREE.MeshLambertMaterial({ map: texLoader.load( '../textures/rocks.jpg' ) }),
-        .8, // high friction
-        .4 // low restitution
+        1, // high friction
+        0 // low restitution
     );
     ground_material.map.wrapS = ground_material.map.wrapT = THREE.RepeatWrapping;
     ground_material.map.repeat.set( 3, 3 );
@@ -186,6 +151,29 @@ function init() {
     helipad.position.y = 0.051;
     scene.add( helipad );
 
+    let ledMaterial = new THREE.MeshPhongMaterial({color: 0xff0000});
+    for (let x of [-2.9, 0, 2.9]) {
+        for (let z of [-2.9, 0, 2.9]) {
+            if (x !== 0 || z !== 0) {
+                let sphere = new THREE.Mesh(
+                    new THREE.SphereGeometry(.05, .05, .05), ledMaterial
+                );
+                sphere.position.x = x;
+                sphere.position.y = 0.051;
+                sphere.position.z = z;
+                scene.add(sphere);
+    
+                let led = new THREE.PointLight(0xaa0000, 0.8, 10, 1);
+                led.position.x = x;
+                led.position.y = 0.0515;
+                led.position.z = z;
+                leds.push(led);
+                scene.add( led );
+            }
+        }
+    }
+
+    
 //    let particleLight = new THREE.Mesh( new THREE.SphereGeometry( 16, 8, 8 ), new THREE.MeshBasicMaterial( { color: 0xffffff } ) );
 //    scene.add( particleLight );
 
@@ -252,28 +240,6 @@ function initSky() {
     sky.uniforms.sunPosition.value.copy( sunSphere.position );
 }
 
-function attachCamera( drone, cameraBox ) {
-    let constraint = new Physijs.DOFConstraint(
-        drone, // First object to be constrained
-        cameraBox, // OPTIONAL second object - if omitted then physijs_mesh_1 will be constrained to the scene
-        new THREE.Vector3( 0, 10, -10 ) // point in the scene to apply the constraint
-    );
-    scene.addConstraint( constraint );
-    constraint.setLinearLowerLimit( new THREE.Vector3( -10, -5, 0 ) ); // sets the lower end of the linear movement along the x, y, and z axes.
-    constraint.setLinearUpperLimit( new THREE.Vector3( 10, 5, 0 ) ); // sets the upper end of the linear movement along the x, y, and z axes.
-    constraint.setAngularLowerLimit( new THREE.Vector3( 0, -Math.PI/2, 0 ) ); // sets the lower end of the angular movement, in radians, along the x, y, and z axes.
-    constraint.setAngularUpperLimit( new THREE.Vector3( 0, Math.PI/2, 0 ) ); // sets the upper end of the angular movement, in radians, along the x, y, and z axes.
-//    constraint.configureAngularMotor(
-//        which, // which angular motor to configure - 0,1,2 match x,y,z
-//        low_limit, // lower limit of the motor
-//        high_limit, // upper limit of the motor
-//        velocity, // target velocity
-//        max_force // maximum force the motor can apply
-//    );
-//    constraint.enableAngularMotor( which ); // which angular motor to configure - 0,1,2 match x,y,z
-//    constraint.disableAngularMotor( which ); // which angular motor to configure - 0,1,2 match x,y,z}
-}
-
 
 function onWindowResize() {
     camera.aspect = window.innerWidth / window.innerHeight;
@@ -285,17 +251,23 @@ function onWindowResize() {
 
 function animate() {
     requestAnimationFrame( animate );
-    controls.update();
+//    controls.update();
 
     let dronePoint = getCameraPoint(drone);
     camera.position.x = dronePoint.position.x;
     camera.position.y = dronePoint.position.y;
     camera.position.z = dronePoint.position.z;
     camera.lookAt(dronePoint.lookAt);
+    // console.log(dronePoint.lookAt);
     render();
 }
 
 function render() {
+    let timer = Date.now() * 0.004;
+    for (let led of leds) {
+        led.power = (1 + Math.sin(timer)) * 3 * Math.PI;
+    }
+
     rotors.updateRotation();
     rotors.updatePitch();
     rotors.updateVelocity();
@@ -303,25 +275,60 @@ function render() {
     renderer.render( scene, camera );
 }
 
+var laggedView = null;
 function getCameraPoint(drone) {
     var matrix = new THREE.Matrix4();
     matrix.extractRotation( drone.matrix );
-    var direction = new THREE.Vector3( 0, 0, 1 );
+    var direction = new THREE.Vector3( 0, 0, .8 );
     direction.applyMatrix4(matrix);
+
+    let dPos = drone.position;
+    if (laggedView === null) {
+        laggedView = {
+            x: dPos.x,
+            y: dPos.y,
+            z: dPos.z
+        };
+    }
+    else {
+        let dist = distance(laggedView, dPos);
+        let lagRestore = dist * 0.1;
+        if (dist > 0.01) {
+            laggedView.x += (lagRestore - 0.095) * Math.abs(dPos.x - laggedView.x) * (dPos.x > laggedView.x ? 1 : -1);
+            laggedView.y += (lagRestore + 0.1)   * Math.abs(dPos.y - laggedView.y) * (dPos.y > laggedView.y ? 1 : -1);
+            laggedView.z += (lagRestore - 0.095) * Math.abs(dPos.z - laggedView.z) * (dPos.z > laggedView.z ? 1 : -1);
+        }
+        else if (dist > 0) {
+            laggedView = {
+                x: dPos.x,
+                y: dPos.y,
+                z: dPos.z
+            };
+        }
+    }
+
+    let position = new THREE.Vector3(
+        (laggedView.x - 6*direction.x),
+        (laggedView.y - 6*direction.y + 3),
+        (laggedView.z - 6*direction.z)
+    );
     return {
         "lookAt": new THREE.Vector3(
             drone.position.x + 3*direction.x,
             (drone.position.y + 3*direction.y + .5),
             drone.position.z + 3*direction.z
         ),
-        "position": new THREE.Vector3(
-            (drone.position.x - 5*direction.x),
-            (drone.position.y - 5*direction.y + 3),
-            (drone.position.z - 5*direction.z)
-        ),
+        "position": position,
     };
 }
 
+function distance( v1, v2 ) {
+    let dx = v1.x - v2.x;
+    let dy = v1.y - v2.y;
+    let dz = v1.z - v2.z;
+
+    return Math.sqrt( dx * dx + dy * dy + dz * dz );
+}
 
 
 let keysState = {};

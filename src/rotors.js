@@ -97,39 +97,42 @@ class Rotors {
 
 
         // Vertical pitch
-        if (linearVelocity.z !== 0) {
-            let xRotIncr = linearVelocity.z * .1; // 0-5
-            this.drone.rotation.x = xRotIncr * 0.05;
-            this.drone.__dirtyRotation = true;
-        }
-        else if (Math.abs(this.drone.rotation.x) > 0) {
-            if (Math.abs(this.drone.rotation.x) < 0.01) {
-                this.drone.rotation.x = 0;
-            }
-            else {
-                this.drone.rotation.x += -this.drone.rotation.x * .1;
-            }
-            this.drone.__dirtyRotation = true;
-        }
-
-        if (linearVelocity.x !== 0) {
-            let zRotIncr = linearVelocity.x * .1; // 0-5
-            this.drone.rotation.z = zRotIncr * 0.05;
-            this.drone.__dirtyRotation = true;
-        }
-        else if (Math.abs(this.drone.rotation.z) > 0) {
-            if (Math.abs(this.drone.rotation.z) < 0.01) {
-                this.drone.rotation.z = 0;
-            }
-            else {
-                this.drone.rotation.z += -this.drone.rotation.z * .1;
-            }
-            this.drone.__dirtyRotation = true;
-        }
+//        if (linearVelocity.z !== 0) {
+//            let xRotIncr = linearVelocity.z * .1; // 0-5
+//            this.drone.rotation.x = xRotIncr * 0.05;
+//            this.drone.__dirtyRotation = true;
+//        }
+//        else if (Math.abs(this.drone.rotation.x) > 0) {
+//            if (Math.abs(this.drone.rotation.x) < 0.01) {
+//                this.drone.rotation.x = 0;
+//            }
+//            else {
+//                this.drone.rotation.x += -this.drone.rotation.x * .1;
+//            }
+//            this.drone.__dirtyRotation = true;
+//        }
+//
+//        if (linearVelocity.x !== 0) {
+//            let zRotIncr = linearVelocity.x * .1; // 0-5
+//            this.drone.rotation.z = zRotIncr * 0.05;
+//            this.drone.__dirtyRotation = true;
+//        }
+//        else if (Math.abs(this.drone.rotation.z) > 0) {
+//            if (Math.abs(this.drone.rotation.z) < 0.01) {
+//                this.drone.rotation.z = 0;
+//            }
+//            else {
+//                this.drone.rotation.z += -this.drone.rotation.z * .1;
+//            }
+//            this.drone.__dirtyRotation = true;
+//        }
 
         // angular velocities limits
-        if (Math.abs(angularVelocity.x) > 0.001) { angularVelocity.x = 0; }
-        if (Math.abs(angularVelocity.z) > 0.001) { angularVelocity.z = 0; }
+        if (Math.abs(angularVelocity.x) < 0.001) { angularVelocity.x = 0; }
+        if (Math.abs(angularVelocity.z) < 0.001) { angularVelocity.z = 0; }
+        if (Math.abs(angularVelocity.x) > 3) { angularVelocity.x = 3 * (angularVelocity.x > 0 ? 1 : -1); }
+        if (Math.abs(angularVelocity.y) > 3) { angularVelocity.y = 3 * (angularVelocity.y > 0 ? 1 : -1); }
+        if (Math.abs(angularVelocity.z) > 3) { angularVelocity.z = 3 * (angularVelocity.z > 0 ? 1 : -1); }
         
         // update
         this.drone.setLinearVelocity(linearVelocity);
