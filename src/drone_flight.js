@@ -101,39 +101,81 @@ function init() {
     scene.setGravity(new THREE.Vector3( 0, -30, 0 ));
 
     // Grid
-    let size = 14, step = 1;
+//    let size = 14, step = 1;
+//
+//    let geometry = new THREE.Geometry();
+//    let material = new THREE.LineBasicMaterial( { color: 0x303030 } );
+//
+//    for ( let i = - size; i <= size; i += step ) {
+//
+//        geometry.vertices.push( new THREE.Vector3( - size, - 0.04, i ) );
+//        geometry.vertices.push( new THREE.Vector3(   size, - 0.04, i ) );
+//
+//        geometry.vertices.push( new THREE.Vector3( i, - 0.04, - size ) );
+//        geometry.vertices.push( new THREE.Vector3( i, - 0.04,   size ) );
+//
+//    }
+//
+//    let line = new THREE.LineSegments( geometry, material );
+//    scene.add( line );
 
-    let geometry = new THREE.Geometry();
-    let material = new THREE.LineBasicMaterial( { color: 0x303030 } );
-
-    for ( let i = - size; i <= size; i += step ) {
-
-        geometry.vertices.push( new THREE.Vector3( - size, - 0.04, i ) );
-        geometry.vertices.push( new THREE.Vector3(   size, - 0.04, i ) );
-
-        geometry.vertices.push( new THREE.Vector3( i, - 0.04, - size ) );
-        geometry.vertices.push( new THREE.Vector3( i, - 0.04,   size ) );
-
-    }
-
-    let line = new THREE.LineSegments( geometry, material );
-    scene.add( line );
-
-    let ground = new Physijs.PlaneMesh(
-        new THREE.PlaneGeometry( 300, 300, 100, 100 ),
+    let base = new Physijs.PlaneMesh(
+        new THREE.PlaneGeometry( 500, 500, 200, 200 ),
         new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.0 }),
         0
     );
+    base.rotation.x = -Math.PI / 2;
+    base.receiveShadow = true;
+    base.position.y = 0;
+    scene.add( base );
+
+    // Loader
+    let texLoader = new THREE.TextureLoader();
+    
+    // Materials
+    let ground_material = Physijs.createMaterial(
+        new THREE.MeshLambertMaterial({ map: texLoader.load( '../textures/rocks.jpg' ) }),
+        .8, // high friction
+        .4 // low restitution
+    );
+    ground_material.map.wrapS = ground_material.map.wrapT = THREE.RepeatWrapping;
+    ground_material.map.repeat.set( 3, 3 );
+
+    // Ground
+    let NoiseGen = new ImprovedNoise;
+
+    let ground_geometry = new THREE.PlaneGeometry( 500, 500, 200, 200 );
+    for ( let i = 0; i < ground_geometry.vertices.length; i++ ) {
+        var vertex = ground_geometry.vertices[i];
+        // ground_geometry.vertices[i].y = NoiseGen.noise( vertex.x / 5, vertex.z / 5 ) * 1;
+    }
+    ground_geometry.computeFaceNormals();
+    ground_geometry.computeVertexNormals();
+
+    let ground = new Physijs.HeightfieldMesh(
+        ground_geometry,
+        ground_material,
+        0 // mass
+    );
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
-    ground.position.y = 0.05;
+    ground.position.y = 0;
     scene.add( ground );
+
+    let helipad = new Physijs.PlaneMesh(
+        new THREE.PlaneGeometry( 6, 6 ),
+        new THREE.MeshLambertMaterial( { map: texLoader.load( '../textures/helipad.jpg' ) } ),
+        0
+    );
+    helipad.rotation.x = -Math.PI / 2;
+    helipad.receiveShadow = true;
+    helipad.position.y = 0.051;
+    scene.add( helipad );
 
 //    let particleLight = new THREE.Mesh( new THREE.SphereGeometry( 16, 8, 8 ), new THREE.MeshBasicMaterial( { color: 0xffffff } ) );
 //    scene.add( particleLight );
 
     // Lights
-
     scene.add( new THREE.AmbientLight( 0xaaaaaa ) );
 
 //    let directionalLight = new THREE.DirectionalLight(/*Math.random() * 0xffffff*/0xeeeeee );
