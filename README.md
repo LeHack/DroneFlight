@@ -2,6 +2,9 @@
 
 Simple animation of a controllable drone (student project).
 
+## Author
+Łukasz Hejnak
+
 ### Running
 From the project dir call:
 ```python -m SimpleHTTPServer```
