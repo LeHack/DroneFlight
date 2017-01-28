@@ -3,15 +3,24 @@
 Physijs.scripts.worker = './vendor/physijs_worker.js';
 Physijs.scripts.ammo = './ammo.js';
 
-var camera, scene, renderer, controls, drone, rotors;
+var camera, cameraBox, scene, sky, renderer, controls, drone, rotors;
 
 let loader = new THREE.TGALoader();
 let droneTexture = loader.load( '../models/Drone/Drone_D.tga');
-let droneMaterial = new THREE.MeshPhongMaterial( {
-    color: 0xffffff,
-    map: droneTexture,
-    side: THREE.DoubleSide,
-});
+let droneMaterial = Physijs.createMaterial(
+    new THREE.MeshPhongMaterial( {
+        color: 0xffffff,
+        map: droneTexture,
+        side: THREE.DoubleSide,
+    }),
+    0.9,
+    0
+);
+//let droneMaterial = new THREE.MeshPhongMaterial( {
+//    color: 0xffffff,
+//    map: droneTexture,
+//    side: THREE.DoubleSide,
+//});
 
 // model
 loader = new THREE.OBJLoader();
@@ -23,7 +32,7 @@ loader.load( '../models/Drone/Body.obj', function ( body ) {
     });
 
     drone = new Physijs.BoxMesh(
-        new THREE.BoxGeometry( 5, 0.5, 2 ),
+        new THREE.BoxGeometry( 5, 0.6, 2 ),
         new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.0 })
         // Uncomment the next line to see the wireframe of the container shape
         // new THREE.MeshBasicMaterial({ wireframe: true, opacity: 0.5 })
@@ -35,6 +44,9 @@ loader.load( '../models/Drone/Body.obj', function ( body ) {
     drone.add(body);
     drone.position.x = 0;
     drone.position.z = 0;
+    
+    drone.setCcdMotionThreshold(1);
+    drone.setCcdSweptSphereRadius(0.6);
 
     loader.load( '../models/Drone/Engine.obj', function ( engine ) {
         engine.traverse( function ( child ) {
@@ -59,17 +71,24 @@ loader.load( '../models/Drone/Body.obj', function ( body ) {
 
         drone.add(engineL);
         drone.add(engineR);
-        drone.position.y = .25;
+        drone.position.y = .33;
 
         init();
+        initSky();
 
         scene.add( drone );
 
+        cameraBox = new Physijs.BoxMesh(
+            new THREE.BoxGeometry( .1, .1 ,.1 ),
+            new THREE.MeshBasicMaterial({ wireframe: true, opacity: 0.5 })
+//            new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.0 })
+        );
+//        attachCamera( drone, cameraBox );
+
         rotors = new Rotors(drone, engineL, engineR);
         handleInput();
-        animate();
 
-        console.log(drone);
+        animate();
     });
 });
 
@@ -78,7 +97,7 @@ function init() {
     let container = document.createElement( 'div' );
     document.body.appendChild( container );
 
-    camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 1, 4000 );
+    camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 1, 2000000 );
     camera.position.set( 0, 4, -5 );
     camera.lookAt(getCameraPoint(drone));
 
@@ -142,17 +161,12 @@ function init() {
     ground_material.map.repeat.set( 3, 3 );
 
     // Ground
-    let NoiseGen = new ImprovedNoise;
 
     let ground_geometry = new THREE.PlaneGeometry( 500, 500, 200, 200 );
-    for ( let i = 0; i < ground_geometry.vertices.length; i++ ) {
-        var vertex = ground_geometry.vertices[i];
-        // ground_geometry.vertices[i].y = NoiseGen.noise( vertex.x / 5, vertex.z / 5 ) * 1;
-    }
     ground_geometry.computeFaceNormals();
     ground_geometry.computeVertexNormals();
 
-    let ground = new Physijs.HeightfieldMesh(
+    let ground = new Physijs.PlaneMesh(
         ground_geometry,
         ground_material,
         0 // mass
@@ -193,6 +207,74 @@ function init() {
     window.addEventListener( 'resize', onWindowResize, false );
 }
 
+function initSky() {
+    // Add Sky Mesh
+    sky = new THREE.Sky();
+    scene.add( sky.mesh );
+
+    // Add Sun Helper
+    let sunSphere = new THREE.Mesh(
+        new THREE.SphereBufferGeometry( 20000, 16, 8 ),
+        new THREE.MeshBasicMaterial( { color: 0xffffff } )
+    );
+    sunSphere.position.y = - 700000;
+    sunSphere.visible = true;
+    scene.add( sunSphere );
+
+    let effectController  = {
+        turbidity: 1,
+        rayleigh: 0.989,
+        mieCoefficient: 0,
+        mieDirectionalG: 0.161,
+        luminance: 1.1,
+        inclination: 0.6916, // elevation / inclination
+        azimuth: 0.1714, // Facing front,
+        sun: true,
+    };
+
+    let distance = 400000;
+    let uniforms = sky.uniforms;
+    uniforms.turbidity.value = effectController.turbidity;
+    uniforms.rayleigh.value = effectController.rayleigh;
+    uniforms.luminance.value = effectController.luminance;
+    uniforms.mieCoefficient.value = effectController.mieCoefficient;
+    uniforms.mieDirectionalG.value = effectController.mieDirectionalG;
+
+    let theta = Math.PI * ( effectController.inclination - 0.5 );
+    let phi = 2 * Math.PI * ( effectController.azimuth - 0.5 );
+
+    sunSphere.position.x = distance * Math.cos( phi );
+    sunSphere.position.y = distance * Math.sin( phi ) * Math.sin( theta );
+    sunSphere.position.z = distance * Math.sin( phi ) * Math.cos( theta );
+
+    sunSphere.visible = effectController.sun;
+
+    sky.uniforms.sunPosition.value.copy( sunSphere.position );
+}
+
+function attachCamera( drone, cameraBox ) {
+    let constraint = new Physijs.DOFConstraint(
+        drone, // First object to be constrained
+        cameraBox, // OPTIONAL second object - if omitted then physijs_mesh_1 will be constrained to the scene
+        new THREE.Vector3( 0, 10, -10 ) // point in the scene to apply the constraint
+    );
+    scene.addConstraint( constraint );
+    constraint.setLinearLowerLimit( new THREE.Vector3( -10, -5, 0 ) ); // sets the lower end of the linear movement along the x, y, and z axes.
+    constraint.setLinearUpperLimit( new THREE.Vector3( 10, 5, 0 ) ); // sets the upper end of the linear movement along the x, y, and z axes.
+    constraint.setAngularLowerLimit( new THREE.Vector3( 0, -Math.PI/2, 0 ) ); // sets the lower end of the angular movement, in radians, along the x, y, and z axes.
+    constraint.setAngularUpperLimit( new THREE.Vector3( 0, Math.PI/2, 0 ) ); // sets the upper end of the angular movement, in radians, along the x, y, and z axes.
+//    constraint.configureAngularMotor(
+//        which, // which angular motor to configure - 0,1,2 match x,y,z
+//        low_limit, // lower limit of the motor
+//        high_limit, // upper limit of the motor
+//        velocity, // target velocity
+//        max_force // maximum force the motor can apply
+//    );
+//    constraint.enableAngularMotor( which ); // which angular motor to configure - 0,1,2 match x,y,z
+//    constraint.disableAngularMotor( which ); // which angular motor to configure - 0,1,2 match x,y,z}
+}
+
+
 function onWindowResize() {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
@@ -204,11 +286,12 @@ function onWindowResize() {
 function animate() {
     requestAnimationFrame( animate );
     controls.update();
+
     let dronePoint = getCameraPoint(drone);
-    camera.position.x = dronePoint.x;
-    camera.position.y = dronePoint.y + 3;
-    camera.position.z = dronePoint.z - 10;
-    camera.lookAt(dronePoint);
+    camera.position.x = dronePoint.position.x;
+    camera.position.y = dronePoint.position.y;
+    camera.position.z = dronePoint.position.z;
+    camera.lookAt(dronePoint.lookAt);
     render();
 }
 
@@ -221,7 +304,22 @@ function render() {
 }
 
 function getCameraPoint(drone) {
-    return new THREE.Vector3( drone.position.x, drone.position.y + 1, drone.position.z + 3 );
+    var matrix = new THREE.Matrix4();
+    matrix.extractRotation( drone.matrix );
+    var direction = new THREE.Vector3( 0, 0, 1 );
+    direction.applyMatrix4(matrix);
+    return {
+        "lookAt": new THREE.Vector3(
+            drone.position.x + 3*direction.x,
+            (drone.position.y + 3*direction.y + .5),
+            drone.position.z + 3*direction.z
+        ),
+        "position": new THREE.Vector3(
+            (drone.position.x - 5*direction.x),
+            (drone.position.y - 5*direction.y + 3),
+            (drone.position.z - 5*direction.z)
+        ),
+    };
 }
 
 
@@ -276,7 +374,7 @@ function handleInput() {
     if (noCtrlKeyPressed) {
         rotors.steer();
     }
-    setTimeout(handleInput, 50);
+    setTimeout(handleInput, 30);
 }
 
 // attach event handler

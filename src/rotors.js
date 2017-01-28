@@ -185,6 +185,7 @@ class Rotors {
     steer(direction) {
         this.pitchPressed = (direction !== undefined);
         if (!this.pitchPressed) { return; }
+
         let leftPitch  = this._getPitchCtrl(this.pick.LEFT),
             rightPitch = this._getPitchCtrl(this.pick.RIGHT);
 
